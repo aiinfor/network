@@ -1,0 +1,323 @@
+
+```{r}
+install.packages("rlang")
+```
+
+```{r}
+# Load all the packages required for the analysis
+library(caTools)
+
+library(dplyr) # Data Manipulation
+library(Amelia) # Missing Data: Missings Map
+library(ggplot2) # Visualization
+library(scales) # Visualization
+library(caTools) # Prediction: Splitting Data
+library(car) # Prediction: Checking Multicollinearity
+library(ROCR) # Prediction: ROC Curve
+library(e1071) # Prediction: SVM, Naive Bayes, Parameter Tuning
+library(rpart) # Prediction: Decision Tree
+library(rpart.plot) # Prediction: Decision Tree
+library(randomForest) # Prediction: Random Forest
+library(caret) # Prediction: k-Fold Cross Validation
+library(tidyverse)
+library(VIM)
+library(lubridate)
+library(hms)
+```
+
+
+
+Since the dataset is too big, so everytime I ma trying to run the code, R is crashing.
+
+
+
+
+```{r}
+NT <- NST[1:500, c(1:21)]
+```
+
+
+```{r}
+str(   NT)
+```
+
+```{r}
+summary(NT)
+```
+
+
+
+```{r}
+res<-summary(aggr(NT, sortVar=TRUE))$combinations
+```
+
+```{r}
+colSums(is.na(NT)|NT=='')
+```
+
+Let us review each variable in the dataset and find out whether they are going to be useul for the analysis or not.
+
+The first variable is Incident ID and it is unique for each of the ticket raised. Also there are no missing values. Since they are all unique, we are not going to use that variable in our analysis.
+
+Next comes Discipline. The unique values present in dicipline are as ollows.
+
+```{r}
+unique(NT$Discipline)
+```
+
+It looks like there are main three discplines : Data, Video and Telephony 
+
+
+```{r}
+data.frame(table(NT$Discipline))
+```
+
+
+Since there are so many missing values in Discipline, I am not going to use that variable.
+
+Facility and Node variable also has major missing values and also it is not useful or analysis so I am not considering that too.
+
+```{r}
+unique(NT$`Reporting-Resolution`)
+```
+
+Since the tickets raised were not opened or resolved yet so the reposrting resolution remains NA. When the ticket has been closed then only we can expect a value for that variable.
+
+```{r}
+NT1 <- NT[!is.na(NT$`Reporting-Resolution`), ]
+colSums(is.na(NT1)|NT1=='')
+```
+
+
+```{r}
+unique(NT$Item)
+```
+
+
+```{r}
+data.frame(table(NT$Item))
+```
+
+Since iten comes under Category, we are not considering it here in the analysis.
+
+
+
+
+In Customer afected, we are assuming all the missing values in the cutomer afected column as zero as this is not a mandatory field to be put in while resolving the ticket.
+
+```{r}
+NT1$`Customers-Affected`[is.na(NT1$`Customers-Affected`)] <- 0
+colSums(is.na(NT1)|NT1 =='')
+```
+
+
+
+
+Since outage miutes shows that the diference from the occurence time of the event from the resorted date  and time populated. SO the mising values means that there was no work done or the ticket was not looked over. So we cannot replace those missing values with anything, so I am omitting those rows.
+
+```{r}
+NT2 <- NT1[!is.na(NT1$`Outage-Minutes`), ]
+colSums(is.na(NT2)|NT2=='')
+```
+```{r}
+unique(NT2$`Asset-Category`)
+```
+```{r}
+
+data.frame(table(NT2$`Asset-Category`))
+
+```
+It looks like Video is the most frequent one here. Hoever, the NA values canot be replaced by Video because if we see another variables related to it we can see that video is not going to replace the missing values.So I am going to replace the missing NA values with Other. 
+
+```{r}
+NT2$`Asset-Category`[is.na(NT2$`Asset-Category`)] <- 'Otherc'
+```
+
+```{r}
+colSums(is.na(NT2)|NT2=='')
+```
+
+
+Let's separate date and time.
+
+```{r}
+NT3 <-(NT2 %>% 
+    mutate_at(vars(`Date-Created`), mdy_hm) %>% 
+  mutate_at(vars(`Date-Created`), funs("date" = date(.))) %>% 
+  select(-`Date-Created`))
+View(NT3)
+```
+
+
+```{r}
+NT4 <- NT3[c(-1, -2, -4, -5, -6, -7, -10)]
+View(NT4)
+colSums(is.na(NT4))
+```
+
+
+```{r}
+NT4$Impact <- as.factor(NT4$Impact)
+NT4$Category <- as.factor(NT4$Category)
+NT4$Type <- as.factor(NT4$Type)
+NT4$Component <- as.factor(NT4$Component)
+NT4$Specifics <- as.factor(NT4$Specifics)
+NT4$`Caused-By` <- as.factor(NT4$`Caused-By`)
+NT4$`Asset+` <- as.factor(NT4$`Asset+`)
+NT4$`Priority-Desc` <- as.factor(NT4$`Priority-Desc`)
+NT4$`Created-By` <- as.factor(NT4$`Created-By`)
+NT4$`Reporting-Resolution` <- as.factor(NT4$`Reporting-Resolution`)
+NT4$`Asset-Category` <- as.factor(NT4$`Asset-Category`)
+#NT4$date <- as.factor(NT4$date)
+```
+
+```{r}
+str(NT4)
+
+```
+
+
+
+
+
+```{r}
+#Analysing column Impact using a barplot
+ggplot(NT4,aes(Impact,fill="green"))+
+  geom_bar(col="black")+
+  geom_text(stat='count',aes(label=..count..))+
+  theme_bw()
+```
+```{r}
+unique(NT4$Category)
+```
+
+
+```{r}
+ggplot(data = NT4)+
+  stat_count(mapping = aes(x = NT4$Category))+
+  coord_flip()
+
+```
+
+```{r}
+ggplot(data = NT4)+
+  stat_count(mapping = aes(x = NT4$Category))+
+  coord_flip()
+```
+
+```{r}
+unique(NT4$`Reporting-Resolution`)
+```
+
+
+
+
+
+
+```{r}
+ggplot(NT4) + geom_histogram(aes(x = NT4$`Outage-Minutes`))
+```
+
+```{r}
+ggplot(NT4, aes(x = NT4$`Outage-Minutes`))+
+    geom_histogram(bins = 5)
+```
+
+
+Impact Rate based on priority
+
+```{r}
+ggplot(filter(NT4, is.na(Impact)==FALSE), aes(`Priority-Desc`, fill=Impact)) + 
+  geom_bar(aes(y = (..count..)/sum(..count..)), alpha=0.9, position="dodge") +
+  scale_fill_brewer(palette = "Dark2", direction = -1) +
+  scale_y_continuous(labels=percent, breaks=seq(0,0.6,0.05)) +
+  ylab("Percentage") + 
+  ggtitle("Impact Rate based on Priority") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+Impact Rate based on Priority and specifics
+
+
+
+```{r}
+ggplot(data = NT4) + 
+  stat_count(mapping = aes(x = Category, color = Impact))+
+coord_flip()
+```
+
+
+#Analysis of asset category taking priority and impact into consideration
+
+```{r}
+ggplot(data = NT4) + 
+  geom_point(mapping = aes(y = `Priority-Desc`, x = Impact, alpha = `Asset-Category`))
+```
+```{r}
+View(NT4)
+```
+
+
+
+
+```{r}
+
+original <- NT4[1:100, c("Impact", "Specifics","Component", "Category")]
+
+```
+
+
+```{r}
+split = sample.split(original$Impact, SplitRatio = 0.8)
+train = subset(original, split == TRUE)
+test = subset(original, split == FALSE)
+```
+
+```{r}
+#set.seed(10)
+folds = createMultiFolds(train$Impact, k = 10)
+control <- trainControl(method = "repeatedcv", index = folds)
+classifier_cv <- train(Impact~ ., data = train, method = "rf", trControl = control)
+y_pred = predict(classifier_cv, newdata = test[,-which(names(test)=="Impact")])
+table(test$Impact, y_pred)
+error <- mean(test$Impact != y_pred)
+paste('Accuracy',round(1-error,4))
+```
+
+
+
+
+
+
+
+
+#Logistic Regression
+
+The first maching learning classification algorithm I use in the analysis is the most popular and the simplest Logistic Regression. But wait! we cannot simply blindly fit the Logistic Regression. This algorithm comes with a price. We need to CHECK THE ASSUMPTIONS!!! Let's check the Logistic Regression assumptions: features should be independent from each other and residuals are not autocorrelated.
+
+
+```{r}
+original <- NT4[1:100, c("Reporting-Resolution", "Specifics","Component", "Category", "Caused-By")]
+
+split = sample.split(original$`Reporting-Resolution`, SplitRatio = 0.8)
+train = subset(original, split == TRUE)
+test = subset(original, split == FALSE)
+```
+
+
+```{r}
+# Fitting Logistic Regression to the Training set
+classifier = glm(`Reporting-Resolution` ~ ., family = binomial(link='logit'), data = train)
+
+# Choosing the best model by AIC in a Stepwise Algorithm
+# The step() function iteratively removes insignificant predictor variables from the model.
+classifier <- step(classifier)
+```
+
+```{r}
+summary(classifier)
+```
+
